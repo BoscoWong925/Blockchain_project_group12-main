@@ -6,7 +6,9 @@ Each transaction contains:
     1. Transaction ID  - SHA-256 hash of the transaction contents
     2. Input           - Sender's public key (address)
     3. Output          - Receiver's public key (address)
-    4. Data            - Amount of virtual coins
+    4. Data            - { amount, amount_hash } where amount_hash = SHA-256(amount)
+                         (per spec §5.1: "amount of virtual coins AND the
+                         crypto-hash of the amount of virtual coins")
     5. Signature       - Digital signature created with sender's private key
 """
 
@@ -46,6 +48,9 @@ class Transaction:
         self.receiver = receiver
         self.amount = amount
 
+        # Data field (spec §5.1): amount + SHA-256(amount)
+        self.amount_hash = hashlib.sha256(str(amount).encode("utf-8")).hexdigest()
+
         # Input: sender's address (public key)
         self.input_address = sender.get_address()
         # Output: receiver's address (public key)
@@ -65,7 +70,11 @@ class Transaction:
         Returns:
             UTF-8 encoded bytes of the combined transaction data.
         """
-        data_string = f"{self.input_address}{self.output_address}{self.amount}"
+        # Include amount_hash so signature covers the full data field (§5.1)
+        data_string = (
+            f"{self.input_address}{self.output_address}"
+            f"{self.amount}{self.amount_hash}"
+        )
         return data_string.encode("utf-8")
 
     def _sign_transaction(self) -> str:
@@ -95,6 +104,7 @@ class Transaction:
                 "input": self.input_address,
                 "output": self.output_address,
                 "amount": self.amount,
+                "amount_hash": self.amount_hash,
                 "signature": self.signature,
             },
             sort_keys=True,
@@ -132,6 +142,7 @@ class Transaction:
             "input": self.input_address,
             "output": self.output_address,
             "amount": self.amount,
+            "amount_hash": self.amount_hash,
             "signature": self.signature,
         }
 
@@ -140,4 +151,48 @@ class Transaction:
             f"Transaction(id={self.tx_id[:16]}..., "
             f"from={self.sender.name}, to={self.receiver.name}, "
             f"amount={self.amount})"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Coinbase transaction (BONUS — Lectures 05 & 06)
+# ---------------------------------------------------------------------------
+
+COINBASE_ADDRESS = "COINBASE"  # sentinel sender address for newly minted coins
+
+
+class CoinbaseTransaction(Transaction):
+    """
+    A coinbase transaction creates new coins and pays them to a miner.
+    It has no real sender, so it is not ECDSA-signed; it is trusted by virtue
+    of being the first transaction in a block (see Lecture 05, §"Block
+    Subsidy / Coinbase Transaction").
+
+    For simplicity, this class reuses the Transaction serialisation format
+    but sets:
+        - input_address = COINBASE_ADDRESS
+        - signature     = "" (empty)
+        - verify_signature() returns True unconditionally
+    """
+
+    def __init__(self, miner, reward: float):
+        self.sender = None
+        self.receiver = miner
+        self.amount = reward
+        self.amount_hash = hashlib.sha256(str(reward).encode("utf-8")).hexdigest()
+
+        self.input_address = COINBASE_ADDRESS
+        self.output_address = miner.get_address()
+
+        self.signature = ""  # coinbase has no ECDSA signature
+        self.tx_id = self._calculate_tx_id()
+
+    def verify_signature(self) -> bool:
+        # Coinbase transactions are valid by protocol, not by signature.
+        return True
+
+    def __repr__(self) -> str:
+        return (
+            f"CoinbaseTransaction(id={self.tx_id[:16]}..., "
+            f"to={self.receiver.name}, reward={self.amount})"
         )

@@ -1,3 +1,7 @@
+> **Note to reader:** this file is the instructor-supplied assignment brief, preserved verbatim for reference. It is NOT authored by Group 12. Our code, report, and documentation respond to the requirements defined below.
+
+---
+
 COMP4137/COMP7200 Programming Project:
 Implementation of a Mini Blockchain
 COMP4137/COMP7200
